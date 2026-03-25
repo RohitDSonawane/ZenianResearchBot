@@ -1,5 +1,7 @@
 # 🤖 ZenianResearchBot
 
+> **Suggested GitHub description:** *AI-powered Telegram bot that scrapes Springer research papers, summarizes them with a local LLM, stores vector embeddings in Pinecone, and answers natural-language queries with relevant papers and YouTube videos.*
+
 A comprehensive research paper discovery and query system that combines web scraping, LLM-powered summarization, vector embeddings, and a Telegram bot interface to make academic research accessible to everyone.
 
 ---
@@ -18,6 +20,7 @@ A comprehensive research paper discovery and query system that combines web scra
 - [API Integrations](#api-integrations)
 - [Docker](#docker)
 - [Contributing](#contributing)
+- [GitHub Repository Metadata](#github-repository-metadata)
 - [License](#license)
 
 ---
@@ -320,6 +323,27 @@ Contributions are welcome! To contribute:
 5. Open a Pull Request
 
 Please ensure any API keys or secrets are kept out of commits and use `.env` files instead.
+
+---
+
+## GitHub Repository Metadata
+
+### Suggested Repository Description
+
+> AI-powered Telegram bot that scrapes Springer research papers, summarizes them with a local LLM (Ollama), stores vector embeddings in Pinecone, and answers natural-language queries with relevant papers and YouTube videos.
+
+*(Set this in **GitHub → Repository Settings → Description**.)*
+
+### Suggested Topics / Tags
+
+```
+telegram-bot  research-papers  web-scraping  llm  vector-database
+pinecone  ollama  sentence-transformers  gemini-api  playwright
+python  asyncio  rag  semantic-search  academic-research
+springer  youtube-api  nlp  ai  chatbot
+```
+
+*(Add these in **GitHub → Repository Settings → Topics**.)*
 
 ---
 

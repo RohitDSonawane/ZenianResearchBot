@@ -20,7 +20,7 @@ class Config:
     TOP_K = int(os.getenv('TOP_K', '40'))
     
     # Pinecone Configuration
-    PINECONE_API_KEY = 'pcsk_3ynGce_QDwtvEJopBEtLD3fzetwXX5YBV5Ymj1UK5TmuGeYtAjVAPVWVLYW4qum8F7YyVJ'
+    PINECONE_API_KEY = os.getenv('PINECONE_API_KEY')
     PINECONE_ENVIRONMENT = os.getenv('PINECONE_ENVIRONMENT', 'us-east-1')
     PINECONE_INDEX_NAME = os.getenv('PINECONE_INDEX_NAME', 'research-abstracts')
     EMBEDDING_DIMENSION = int(os.getenv('EMBEDDING_DIMENSION', '384'))  # Fixed to match all-MiniLM-L6-v2
@@ -52,4 +52,11 @@ class Config:
         logger.info("Validating configuration...")
         errors = []
         if not cls.PINECONE_API_KEY:
-            errors.append
+            errors.append("PINECONE_API_KEY is not set")
+        if not cls.OLLAMA_MODEL:
+            errors.append("OLLAMA_MODEL is not set")
+        if errors:
+            for error in errors:
+                logger.error(f"Configuration error: {error}")
+            raise ValueError(f"Configuration validation failed: {'; '.join(errors)}")
+        logger.info("Configuration validated successfully.")
