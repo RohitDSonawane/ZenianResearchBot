@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  lint-and-compile:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [bot, scraper]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies (bot)
+        if: matrix.component == 'bot'
+        run: pip install -r Bot/requirements.txt
+
+      - name: Install dependencies (scraper)
+        if: matrix.component == 'scraper'
+        run: pip install -r scraper/requirements.txt
+
+      - name: Compile Python sources (bot)
+        if: matrix.component == 'bot'
+        run: python -m compileall Bot/
+
+      - name: Compile Python sources (scraper)
+        if: matrix.component == 'scraper'
+        run: python -m compileall scraper/

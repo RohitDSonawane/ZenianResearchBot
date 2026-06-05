@@ -6,6 +6,9 @@ import os
 load_dotenv()
 logger = logging.getLogger('query_bot.pinecone')
 
+EMBEDDING_DIM = 384
+
+
 class PineconeQueryClient:
     def __init__(self):
         api_key = os.getenv("PINECONE_API_KEY")
@@ -22,3 +25,27 @@ class PineconeQueryClient:
         except Exception as e:
             logger.error(f"Error querying Pinecone: {e}")
             return []
+
+    def get_last_timestamp(self):
+        try:
+            response = self.index.fetch(ids=["last_sent"])
+            if response.get("vectors") and "last_sent" in response["vectors"]:
+                return response["vectors"]["last_sent"]["metadata"].get("timestamp", 0)
+            return 0
+        except Exception as e:
+            logger.error(f"Pinecone fetch error: {e}")
+            return 0
+
+    def update_timestamp(self, ts):
+        try:
+            zero_vector = [0.0] * EMBEDDING_DIM
+            self.index.upsert(vectors=[{
+                "id": "last_sent",
+                "values": zero_vector,
+                "metadata": {"timestamp": ts},
+            }])
+        except Exception as e:
+            logger.error(f"Pinecone upsert error: {e}")
+
+    def describe_index_stats(self):
+        return self.index.describe_index_stats()

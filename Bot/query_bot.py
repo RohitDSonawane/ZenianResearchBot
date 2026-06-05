@@ -10,21 +10,18 @@ from datetime import time as dt_time
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 from dotenv import load_dotenv
 import google.generativeai as genai
-from pinecone import Pinecone
 
 from embedding_service import EmbeddingService
 from pinecone_client import PineconeQueryClient
 
-# ===== Load env =====
 load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")  # e.g., 'research-papers'
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "research-abstracts")
 
-# Validate environment variables
 if not TELEGRAM_TOKEN:
     raise ValueError("Missing TELEGRAM_TOKEN in your .env file.")
 if not GEMINI_API_KEY:
@@ -36,32 +33,23 @@ if not PINECONE_API_KEY:
 if not PINECONE_INDEX_NAME:
     raise ValueError("Missing PINECONE_INDEX_NAME in your .env file.")
 
-# Configure Gemini client
 genai.configure(api_key=GEMINI_API_KEY)
 gemini_model = genai.GenerativeModel("gemini-1.5-flash")
 
-# Configure Pinecone
-pc = Pinecone(api_key=PINECONE_API_KEY)
-pinecone_index = pc.Index(PINECONE_INDEX_NAME)
-EMBEDDING_DIM = 384  # Dimension for all-MiniLM-L6-v2
-
-# ===== Logging =====
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("query_bot")
 
-# ===== Init services =====
 embedding_service = EmbeddingService()
 pinecone_client = PineconeQueryClient()
 
-# Global set for chat IDs (users who interact will receive daily sparks)
 chat_ids = set()
 
-# ===== Greeting patterns =====
 GREETINGS = [
     "hello", "hi", "hey", "heyy", "hii", "yo", "sup",
     "good morning", "good afternoon", "good evening",
-    "bye", "goodbye", "see you", "take care"
+    "bye", "goodbye", "see you", "take care",
 ]
+
 
 def is_greeting(query: str) -> bool:
     q_lower = query.lower()
@@ -70,45 +58,48 @@ def is_greeting(query: str) -> bool:
         for g in GREETINGS
     )
 
+
 def escape_html(text: str) -> str:
-    """Fixed escape_html function name and implementation"""
     if text is None:
         return ""
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
+
 async def get_friendly_reply(user_text: str) -> str:
     try:
         prompt = (
-            "Reply in 1-2 short lines, warmly and casually, to this greeting:\n\n"
+            "Reply in 1-2 short lines, warmly and casually, to this greeting. "
+            "Do not use emojis.\n\n"
             f"{user_text}"
         )
         response = gemini_model.generate_content(
             contents=[
                 {"role": "user", "parts": [{"text": "You are a friendly Telegram chatbot."}]},
-                {"role": "user", "parts": [{"text": prompt}]}
+                {"role": "user", "parts": [{"text": prompt}]},
             ],
-            generation_config={"temperature": 0.6}
+            generation_config={"temperature": 0.6},
         )
         return response.text.strip()
     except Exception as e:
         logger.error(f"Gemini error in get_friendly_reply: {e}")
         return random.choice([
-            "👋 Hi! How's your day going?",
+            "Hi! How's your day going?",
             "Hey there! How can I help you today?",
-            "Hello! 😊 Ready to explore some research papers?",
-            "Hi! Feel free to ask about research topics."
+            "Hello! Ready to explore some research papers?",
+            "Hi! Feel free to ask about research topics.",
         ])
+
 
 async def extract_keywords_with_llm(text, max_keywords=5):
     try:
         prompt = (
-            f"Extract {max_keywords} research-relevant keywords or short phrases from this text, suitable for YouTube video search.\n"
-            f"{text}\n"
+            f"Extract {max_keywords} research-relevant keywords or short phrases from this text, "
+            f"suitable for YouTube video search.\n{text}\n"
             "List the keywords only, comma-separated."
         )
         response = gemini_model.generate_content(
             contents=[{"role": "user", "parts": [{"text": prompt}]}],
-            generation_config={"temperature": 0.2, "max_output_tokens": 48}
+            generation_config={"temperature": 0.2, "max_output_tokens": 48},
         )
         keywords = response.text.strip()
         return [kw.strip() for kw in keywords.split(",") if kw.strip()]
@@ -116,26 +107,29 @@ async def extract_keywords_with_llm(text, max_keywords=5):
         logger.error(f"Gemini error in extract_keywords_with_llm: {e}")
         return []
 
+
 async def generate_natural_intro(topic_text: str) -> str:
     try:
         prompt = (
-            f"Generate a natural, casual introduction for sending a daily research spark about this topic: {topic_text}\n"
-            "Make it 1-2 sentences, include emojis, and vary the structure to feel natural, not like a fixed template."
+            f"Generate a natural, casual introduction for sending a weekly research spark about this topic: "
+            f"{topic_text}\n"
+            "Make it 1-2 sentences. Do not use emojis. Vary the structure so it does not feel templated."
         )
         response = gemini_model.generate_content(
             contents=[{"role": "user", "parts": [{"text": prompt}]}],
-            generation_config={"temperature": 0.8, "max_output_tokens": 100}
+            generation_config={"temperature": 0.8, "max_output_tokens": 100},
         )
         return response.text.strip()
     except Exception as e:
         logger.error(f"Gemini error in generate_natural_intro: {e}")
         return random.choice([
-            "👋 Hey, here's today's research spark for you:",
-            "Hi! Check out this cool research topic:",
-            "Hello! Here's something interesting in research today:",
-            "Hey there! Thought you'd like this research highlight:",
-            "😊 Good day! Here's a fresh research idea to spark your curiosity:"
+            "Here is this week's research spark for you:",
+            "Check out this research topic:",
+            "Here is something interesting in research this week:",
+            "Thought you might like this research highlight:",
+            "Here is a fresh research idea to spark your curiosity:",
         ])
+
 
 async def get_first_youtube_links(keywords, max_results=3):
     if not keywords:
@@ -144,18 +138,18 @@ async def get_first_youtube_links(keywords, max_results=3):
     collected = []
     for kw in keywords:
         params = {
-            'part': 'snippet',
-            'q': kw,
-            'type': 'video',
-            'maxResults': max_results,
-            'key': YOUTUBE_API_KEY
+            "part": "snippet",
+            "q": kw,
+            "type": "video",
+            "maxResults": max_results,
+            "key": YOUTUBE_API_KEY,
         }
         try:
             resp = requests.get(yt_base_url, params=params)
             resp.raise_for_status()
             data = resp.json()
-            for item in data.get('items', []):
-                video_id = item['id']['videoId']
+            for item in data.get("items", []):
+                video_id = item["id"]["videoId"]
                 url = f"https://www.youtube.com/watch?v={video_id}"
                 if url not in collected:
                     collected.append(url)
@@ -165,6 +159,7 @@ async def get_first_youtube_links(keywords, max_results=3):
             logger.error(f"YouTube API error for keyword '{kw}': {e}")
     return collected
 
+
 def _get_attr_or_key(obj, name, default=None):
     if hasattr(obj, name):
         return getattr(obj, name)
@@ -172,35 +167,14 @@ def _get_attr_or_key(obj, name, default=None):
         return obj.get(name, default)
     return default
 
-def get_last_timestamp():
-    try:
-        response = pinecone_index.fetch(ids=["last_sent"])
-        if response.get("vectors") and "last_sent" in response["vectors"]:
-            return response["vectors"]["last_sent"]["metadata"].get("timestamp", 0)
-        return 0
-    except Exception as e:
-        logger.error(f"Pinecone fetch error: {e}")
-        return 0
-
-def update_timestamp(ts):
-    try:
-        zero_vector = [0.0] * EMBEDDING_DIM
-        pinecone_index.upsert(vectors=[{
-            "id": "last_sent",
-            "values": zero_vector,
-            "metadata": {"timestamp": ts}
-        }])
-    except Exception as e:
-        logger.error(f"Pinecone upsert error: {e}")
 
 async def send_research_spark(context):
     current_time = time.time()
-    last_timestamp = get_last_timestamp()
-    if current_time - last_timestamp < 7 * 24 * 3600:  # 7 days in seconds
+    last_timestamp = pinecone_client.get_last_timestamp()
+    if current_time - last_timestamp < 7 * 24 * 3600:
         logger.info("Skipping send: Last sent less than 7 days ago.")
         return
 
-    # Choose a random article
     general_query = "interesting research paper"
     vector = embedding_service.create_embeddings(general_query)
     if not vector:
@@ -226,56 +200,56 @@ async def send_research_spark(context):
     link_escaped = escape_html(link_url)
 
     if link_url.startswith("http"):
-        link_html = f'<a href="{link_escaped}">Open Article ↗</a>'
+        link_html = f'<a href="{link_escaped}">Open Article</a>'
     else:
         link_html = link_escaped
 
-    # Generate natural intro
     topic_text = f"{title}\n{summary_raw}"
     intro = await generate_natural_intro(topic_text)
 
     message = (
         f"{intro}\n\n"
-        f"📄 <b>Topic:</b> {title_escaped}\n"
-        f"📝 <b>Summary:</b> {summary}\n"
-        f"🔗 {link_html}"
+        f"<b>Topic:</b> {title_escaped}\n"
+        f"<b>Summary:</b> {summary}\n"
+        f"<b>Link:</b> {link_html}"
     )
 
-    # Optionally add YouTube links
     try:
         keywords = await extract_keywords_with_llm(topic_text, max_keywords=3)
         if keywords:
             yt_links = await get_first_youtube_links(keywords, max_results=3)
             if yt_links:
-                yt_message = "\n".join([f"▶️ <a href='{link}'>Watch Video</a>" for link in yt_links])
-                message += "\n\n🎬 <b>Top YouTube Videos:</b>\n" + yt_message
+                yt_message = "\n".join(
+                    [f'<a href="{link}">Watch Video</a>' for link in yt_links]
+                )
+                message += "\n\n<b>Related YouTube Videos:</b>\n" + yt_message
     except Exception as e:
         logger.error(f"Error adding YouTube links: {e}")
 
-    # Send to all subscribed chat_ids
-    for chat_id in list(chat_ids):  # Copy to avoid modification during iteration
+    for chat_id in list(chat_ids):
         try:
             await context.bot.send_message(
                 chat_id=chat_id,
                 text=message,
                 parse_mode="HTML",
-                disable_web_page_preview=True
+                disable_web_page_preview=True,
             )
         except Exception as e:
             logger.error(f"Failed to send to chat_id {chat_id}: {e}")
-            chat_ids.discard(chat_id)  # Remove invalid chat_id
+            chat_ids.discard(chat_id)
 
-    # Update timestamp
-    update_timestamp(current_time)
+    pinecone_client.update_timestamp(current_time)
     logger.info("Research spark sent and timestamp updated.")
+
 
 async def start(update, context):
     chat_id = update.message.chat_id
     chat_ids.add(chat_id)
     await update.message.reply_text(
-        "Hi! 👋\nSend me a research topic and I'll fetch the top matching paper.",
-        parse_mode="HTML"
+        "Hi! Send me a research topic and I will fetch the top matching paper.",
+        parse_mode="HTML",
     )
+
 
 async def handle_query(update, context):
     chat_id = update.message.chat_id
@@ -291,7 +265,7 @@ async def handle_query(update, context):
         await update.message.reply_text(reply, parse_mode="HTML")
         return
 
-    await update.message.reply_text("🔎 Searching for the most relevant paper...", parse_mode="HTML")
+    await update.message.reply_text("Searching for the most relevant paper...", parse_mode="HTML")
 
     vector = embedding_service.create_embeddings(query_text)
     if not vector:
@@ -317,80 +291,77 @@ async def handle_query(update, context):
     link_escaped = escape_html(link_url)
 
     if link_url.startswith("http"):
-        link_html = f'<a href="{link_escaped}">Open Article ↗</a>'
+        link_html = f'<a href="{link_escaped}">Open Article</a>'
     else:
         link_html = link_escaped
 
     message = (
-        f"📄 <b>Title:</b> {title_escaped}\n"
-        f"📝 <b>Summary:</b> {summary}\n"
-        f"🔗 {link_html}"
+        f"<b>Title:</b> {title_escaped}\n"
+        f"<b>Summary:</b> {summary}\n"
+        f"<b>Link:</b> {link_html}"
     )
 
-    # --- Add YouTube links ---
     try:
         keyword_text = f"{title}\n{summary_raw}"
         keywords = await extract_keywords_with_llm(keyword_text, max_keywords=3)
         if not keywords:
-            message += "\n\n⚠️ Could not extract keywords for YouTube search."
+            message += "\n\nCould not extract keywords for YouTube search."
         else:
             yt_links = await get_first_youtube_links(keywords, max_results=3)
             if yt_links:
-                yt_message = "\n".join([f"▶️ <a href='{link}'>Watch Video</a>" for link in yt_links])
-                message += "\n\n🎬 <b>Top YouTube Videos:</b>\n" + yt_message
+                yt_message = "\n".join(
+                    [f'<a href="{link}">Watch Video</a>' for link in yt_links]
+                )
+                message += "\n\n<b>Related YouTube Videos:</b>\n" + yt_message
             else:
-                message += "\n\n⚠️ No relevant YouTube videos found."
+                message += "\n\nNo relevant YouTube videos found."
     except Exception as e:
         logger.error(f"Error retrieving YouTube links: {e}")
-        message += "\n\n⚠️ Failed to retrieve YouTube videos due to an error."
+        message += "\n\nFailed to retrieve YouTube videos due to an error."
 
     await update.message.reply_text(
         message,
         parse_mode="HTML",
-        disable_web_page_preview=True
+        disable_web_page_preview=True,
     )
 
+
 async def health_check(context):
-    """
-    Optional health check function that logs bot status
-    This helps monitor if the bot is running properly
-    """
     try:
-        # Simple health check - count active chats
         active_chats = len(chat_ids)
         logger.info(f"Bot health check: {active_chats} active chats")
-        
-        # Optional: Test Pinecone connection
+
         try:
-            stats = await asyncio.to_thread(pinecone_index.describe_index_stats)
+            stats = await asyncio.to_thread(pinecone_client.describe_index_stats)
             logger.info(f"Pinecone health: {stats.total_vector_count} vectors")
         except Exception as e:
             logger.warning(f"Pinecone health check failed: {e}")
-            
     except Exception as e:
         logger.error(f"Health check failed: {e}")
+
 
 def main():
     logger.info("Starting Telegram bot...")
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_query))
-    
+
     if app.job_queue is None:
-        logger.error("JobQueue is not available. Please install 'python-telegram-bot[job-queue]' using 'pip install \"python-telegram-bot[job-queue]\"'")
+        logger.error(
+            "JobQueue is not available. Install with: "
+            'pip install "python-telegram-bot[job-queue]"'
+        )
         raise RuntimeError("JobQueue dependency is missing.")
-    
-    # Schedule daily research spark at 6 PM IST
+
     app.job_queue.run_daily(
         send_research_spark,
-        dt_time(18, 0, tzinfo=pytz.timezone('Asia/Kolkata'))
+        dt_time(18, 0, tzinfo=pytz.timezone("Asia/Kolkata")),
     )
-    
-   # Add health check every 10 minutes (600 seconds)
     app.job_queue.run_repeating(health_check, interval=600, first=60)
-    
+
     logger.info("Telegram bot is running...")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()

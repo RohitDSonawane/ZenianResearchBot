@@ -1,8 +1,8 @@
 # Core dependencies
-python-telegram-bot[job-queue]
-google-generativeai
-sentence-transformers
-python-dotenv
-requests
-pytz
-Pinecone
+python-telegram-bot[job-queue]>=21.0,<22.0
+google-generativeai>=0.8.0
+sentence-transformers>=2.2.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+pytz>=2024.1
+pinecone>=5.0.0
